@@ -1,0 +1,6 @@
+{
+  "name": "羽球雙打自動排點系統",
+  "description": "自動排列下一場羽球雙打人員、即時記錄當日打球紀錄與勝負積分，依據實力與等待時間智慧平衡對戰組合。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

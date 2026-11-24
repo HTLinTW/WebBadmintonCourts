@@ -1,0 +1,300 @@
+{
+  "entities": {
+    "UserSession": {
+      "title": "UserSession",
+      "description": "Per-user badminton club daily session settings (no PII stored).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the authenticated owner."
+        },
+        "sessionDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Local session date in YYYY-MM-DD format."
+        },
+        "courtCount": {
+          "type": "integer",
+          "description": "Configured court count (0 means uninitialized, 1..24 active)."
+        },
+        "autoArrange": {
+          "type": "boolean",
+          "description": "Whether 3-minute automatic matchmaking is currently enabled."
+        },
+        "nextAutoArrangeAt": {
+          "type": "integer",
+          "description": "Epoch ms of next scheduled auto-arrange tick (0 when disabled)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when session document was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when session document was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "sessionDate",
+        "courtCount",
+        "autoArrange",
+        "nextAutoArrangeAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Court": {
+      "title": "Court",
+      "description": "A badminton doubles court with name, up to 4 active player IDs, and match start time.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the session owner."
+        },
+        "courtIndex": {
+          "type": "integer",
+          "description": "1-based court index (1..24)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60,
+          "description": "Editable court display name (default blank)."
+        },
+        "playerIds": {
+          "type": "array",
+          "description": "0 or 4 player document IDs currently playing on this court."
+        },
+        "startedAt": {
+          "type": "integer",
+          "description": "Epoch ms when the current match started (0 when empty)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when court was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when court was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "courtIndex",
+        "name",
+        "playerIds",
+        "startedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A badminton club player with rating, win/loss stats, last played time, and current queue status.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the session owner."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Display name of the player."
+        },
+        "rating": {
+          "type": "integer",
+          "description": "Current skill rating (initial 2000)."
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Number of wins today (score == 21)."
+        },
+        "losses": {
+          "type": "integer",
+          "description": "Number of losses today (0 < score < 21)."
+        },
+        "lastPlayedAt": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^\\d{2}:\\d{2}$",
+          "description": "Last played local time in HH:mm format (initial 00:00)."
+        },
+        "lastPlayedTs": {
+          "type": "integer",
+          "description": "Epoch ms of last played match (0 initially)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "queued", "playing"],
+          "description": "Current location of the player."
+        },
+        "waitingSince": {
+          "type": "integer",
+          "description": "Epoch ms when player entered waiting pool."
+        },
+        "paused": {
+          "type": "boolean",
+          "description": "Whether the player is paused and excluded from automatic matchmaking."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when player was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when player was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "rating",
+        "wins",
+        "losses",
+        "lastPlayedAt",
+        "lastPlayedTs",
+        "status",
+        "waitingSince",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "QueueGroup": {
+      "title": "QueueGroup",
+      "description": "An arranged group of 4 doubles players waiting in queue order.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the session owner."
+        },
+        "position": {
+          "type": "integer",
+          "description": "1-based queue order priority."
+        },
+        "playerIds": {
+          "type": "array",
+          "description": "Exactly 4 player document IDs in balanced doubles order."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when queue group was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when queue group was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "position",
+        "playerIds",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MatchRecord": {
+      "title": "MatchRecord",
+      "description": "Immutable completed badminton doubles match record.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the session owner."
+        },
+        "courtName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60,
+          "description": "Name of the court where match was played."
+        },
+        "playedAt": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^\\d{2}:\\d{2}$",
+          "description": "Completion time in HH:mm format."
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "description": "Match duration in seconds."
+        },
+        "playerIds": {
+          "type": "array",
+          "description": "1 to 4 participant player IDs for array-contains queries."
+        },
+        "players": {
+          "type": "array",
+          "description": "1 to 4 participant result maps {playerId, name, score, ratingDelta, ratingAfter}."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when match was recorded."
+        }
+      },
+      "required": [
+        "ownerId",
+        "courtName",
+        "playedAt",
+        "durationSeconds",
+        "playerIds",
+        "players",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserSession" },
+      "description": "Root per-user session configuration document (master gate for subcollections)."
+    },
+    "/users/{userId}/courts/{courtId}": {
+      "schema": { "$ref": "#/entities/Court" },
+      "description": "Active courts owned by the user."
+    },
+    "/users/{userId}/players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Players participating in the user's badminton session."
+    },
+    "/users/{userId}/queueGroups/{groupId}": {
+      "schema": { "$ref": "#/entities/QueueGroup" },
+      "description": "Arranged doubles groups waiting to take a court."
+    },
+    "/users/{userId}/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/MatchRecord" },
+      "description": "Completed match history records for the user's session."
+    }
+  }
+}

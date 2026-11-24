@@ -1,0 +1,376 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==================== Global Primitives ====================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidHHMM(val) {
+      return val is string && val.size() == 5 && val.matches('^\\d{2}:\\d{2}$');
+    }
+
+    function isValidDateStr(val) {
+      return val is string && val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function hasExistingParentSession(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function hasParentSessionForCreate(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId))
+        || existsAfter(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isValidFourPlayerIds(ids) {
+      return ids is list
+        && ids.size() == 4
+        && isValidId(ids[0])
+        && isValidId(ids[1])
+        && isValidId(ids[2])
+        && isValidId(ids[3]);
+    }
+
+    function isValidCourtPlayerIds(ids) {
+      return ids is list
+        && (ids.size() == 0 || isValidFourPlayerIds(ids));
+    }
+
+    function isValidMatchPlayerEntry(entry) {
+      return entry is map
+        && entry.keys().hasAll(['playerId', 'name', 'score', 'ratingDelta', 'ratingAfter'])
+        && entry.keys().hasOnly(['playerId', 'name', 'score', 'ratingDelta', 'ratingAfter'])
+        && isValidId(entry.playerId)
+        && entry.name is string && entry.name.size() >= 1 && entry.name.size() <= 50
+        && entry.score is number && entry.score >= -1000 && entry.score <= 1000
+        && entry.ratingDelta is int && entry.ratingDelta >= -10000 && entry.ratingDelta <= 10000
+        && entry.ratingAfter is int && entry.ratingAfter >= -100000 && entry.ratingAfter <= 100000;
+    }
+
+    function isValidMatchPlayersList(players) {
+      return players is list
+        && players.size() >= 1
+        && players.size() <= 4
+        && isValidMatchPlayerEntry(players[0])
+        && (players.size() < 2 || isValidMatchPlayerEntry(players[1]))
+        && (players.size() < 3 || isValidMatchPlayerEntry(players[2]))
+        && (players.size() < 4 || isValidMatchPlayerEntry(players[3]));
+    }
+
+    function isValidMatchPlayerIds(ids) {
+      return ids is list
+        && ids.size() >= 1
+        && ids.size() <= 4
+        && isValidId(ids[0])
+        && (ids.size() < 2 || isValidId(ids[1]))
+        && (ids.size() < 3 || isValidId(ids[2]))
+        && (ids.size() < 4 || isValidId(ids[3]));
+    }
+
+    // ==================== Entity Validation Blueprints ====================
+
+    function isValidUserSession(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'sessionDate', 'courtCount', 'autoArrange',
+          'nextAutoArrangeAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'sessionDate', 'courtCount', 'autoArrange',
+          'nextAutoArrangeAt', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && isValidDateStr(data.sessionDate)
+        && data.courtCount is int && data.courtCount >= 0 && data.courtCount <= 24
+        && data.autoArrange is bool
+        && data.nextAutoArrangeAt is int && data.nextAutoArrangeAt >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourt(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'courtIndex', 'name', 'playerIds',
+          'startedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'courtIndex', 'name', 'playerIds',
+          'startedAt', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.courtIndex is int && data.courtIndex >= 1 && data.courtIndex <= 24
+        && data.name is string && data.name.size() <= 60
+        && isValidCourtPlayerIds(data.playerIds)
+        && data.startedAt is int && data.startedAt >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPlayer(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'rating', 'wins', 'losses',
+          'lastPlayedAt', 'lastPlayedTs', 'status', 'waitingSince',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'rating', 'wins', 'losses',
+          'lastPlayedAt', 'lastPlayedTs', 'status', 'waitingSince',
+          'paused', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 50
+        && data.rating is int && data.rating >= -100000 && data.rating <= 100000
+        && data.wins is int && data.wins >= 0 && data.wins <= 10000
+        && data.losses is int && data.losses >= 0 && data.losses <= 10000
+        && isValidHHMM(data.lastPlayedAt)
+        && data.lastPlayedTs is int && data.lastPlayedTs >= 0
+        && data.status in ['waiting', 'queued', 'playing']
+        && data.waitingSince is int && data.waitingSince >= 0
+        && (!('paused' in data) || data.paused is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQueueGroup(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'position', 'playerIds', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'position', 'playerIds', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.position is int && data.position >= 1 && data.position <= 500
+        && isValidFourPlayerIds(data.playerIds)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMatchRecord(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'courtName', 'playedAt', 'durationSeconds',
+          'playerIds', 'players', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'courtName', 'playedAt', 'durationSeconds',
+          'playerIds', 'players', 'createdAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.courtName is string && data.courtName.size() <= 60
+        && isValidHHMM(data.playedAt)
+        && data.durationSeconds is int && data.durationSeconds >= 0 && data.durationSeconds <= 86400
+        && isValidMatchPlayerIds(data.playerIds)
+        && isValidMatchPlayersList(data.players)
+        && data.playerIds.size() == data.players.size()
+        && data.createdAt is timestamp;
+    }
+
+    // ==================== Collection Rules ====================
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserSession(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserSession(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: Configure court count / session date
+          incoming().diff(existing()).affectedKeys().hasOnly(['courtCount', 'sessionDate', 'updatedAt'])
+          // Action: Toggle or schedule auto-arrange
+          || incoming().diff(existing()).affectedKeys().hasOnly(['autoArrange', 'nextAutoArrangeAt', 'updatedAt'])
+          // Action: Full session reset
+          || incoming().diff(existing()).affectedKeys().hasOnly(['courtCount', 'sessionDate', 'autoArrange', 'nextAutoArrangeAt', 'updatedAt'])
+        );
+      allow delete: if false;
+
+      // Subcollection: Courts
+      match /courts/{courtId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(courtId)
+          && (resource == null || existing().ownerId == request.auth.uid)
+          && hasExistingParentSession(userId);
+        allow list: if isOwner(userId)
+          && isValidId(userId)
+          && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(courtId)
+          && isValidCourt(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && hasParentSessionForCreate(userId);
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(courtId)
+          && isValidCourt(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().courtIndex == existing().courtIndex
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && hasExistingParentSession(userId)
+          && (
+            // Action: Rename court
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt'])
+            // Action: Assign incoming group or clear court to blank
+            || incoming().diff(existing()).affectedKeys().hasOnly(['playerIds', 'startedAt', 'updatedAt'])
+          );
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(courtId)
+          && existing().ownerId == request.auth.uid
+          && hasExistingParentSession(userId);
+      }
+
+      // Subcollection: Players
+      match /players/{playerId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(playerId)
+          && (resource == null || existing().ownerId == request.auth.uid)
+          && hasExistingParentSession(userId);
+        allow list: if isOwner(userId)
+          && isValidId(userId)
+          && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(playerId)
+          && isValidPlayer(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && hasParentSessionForCreate(userId);
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(playerId)
+          && isValidPlayer(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().name == existing().name
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && hasExistingParentSession(userId)
+          && (
+            // Action: Move player between waiting / queued / playing
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+            // Action: Toggle pause state for automatic matchmaking exclusion
+            || incoming().diff(existing()).affectedKeys().hasOnly(['paused', 'updatedAt'])
+            // Action: Return player to waiting after court count reduction
+            || incoming().diff(existing()).affectedKeys().hasOnly(['status', 'waitingSince', 'updatedAt'])
+            // Action: Complete match and update rating, wins, losses, lastPlayedAt, status
+            || incoming().diff(existing()).affectedKeys().hasOnly([
+              'rating', 'wins', 'losses', 'lastPlayedAt', 'lastPlayedTs', 'status', 'waitingSince', 'updatedAt'
+            ])
+          );
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(playerId)
+          && existing().ownerId == request.auth.uid
+          && hasExistingParentSession(userId);
+      }
+
+      // Subcollection: Queue Groups
+      match /queueGroups/{groupId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(groupId)
+          && (resource == null || existing().ownerId == request.auth.uid)
+          && hasExistingParentSession(userId);
+        allow list: if isOwner(userId)
+          && isValidId(userId)
+          && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(groupId)
+          && isValidQueueGroup(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && hasParentSessionForCreate(userId);
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(groupId)
+          && isValidQueueGroup(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().playerIds == existing().playerIds
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && hasExistingParentSession(userId)
+          && (
+            // Action: Re-index queue priority position after removal/assignment
+            incoming().diff(existing()).affectedKeys().hasOnly(['position', 'updatedAt'])
+          );
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(groupId)
+          && existing().ownerId == request.auth.uid
+          && hasExistingParentSession(userId);
+      }
+
+      // Subcollection: Completed Match History (Append-only immutable; owner may delete on full reset)
+      match /matches/{matchId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(matchId)
+          && (resource == null || existing().ownerId == request.auth.uid)
+          && hasExistingParentSession(userId);
+        allow list: if isOwner(userId)
+          && isValidId(userId)
+          && existing().ownerId == request.auth.uid;
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(matchId)
+          && isValidMatchRecord(incoming(), userId)
+          && incoming().createdAt == request.time
+          && hasParentSessionForCreate(userId);
+        allow update: if false;
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(matchId)
+          && existing().ownerId == request.auth.uid
+          && hasExistingParentSession(userId);
+      }
+    }
+  }
+}
